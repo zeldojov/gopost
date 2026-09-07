@@ -1,4 +1,4 @@
-package session
+package sqlite
 
 import (
 	"database/sql"

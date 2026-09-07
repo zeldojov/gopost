@@ -211,7 +211,7 @@ func TestApp_SessionMiddleware_UsesExistingSession(t *testing.T) {
 
 func TestApp_SessionMiddleware_RecreatesMissingSession(t *testing.T) {
 	app, err := New(Config{
-		DBPath: ":memory:",
+		DBPath: "file::memory:?cache=shared",
 		Session: session.CookieConfig{
 			Name:     "session_id",
 			Path:     "/",

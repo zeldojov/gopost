@@ -10,8 +10,7 @@ import (
 func (s *Store) Middleware(config CookieConfig, logger *log.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			sessionID, err := GetSessionID(r)
+			sessionID, err := GetSessionID(r, config)
 
 			if errors.Is(err, ErrSessionCookieNotFound) {
 				sessionID, err = s.createSession(w, r, config)

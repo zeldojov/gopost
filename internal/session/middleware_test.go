@@ -21,9 +21,9 @@ func testCookieConfig() CookieConfig {
 	}
 }
 
-// region middleware
 func TestSessionMiddleware_CreatesSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,9 +53,9 @@ func TestSessionMiddleware_CreatesSession(t *testing.T) {
 		t.Fatal("expected session ID cookie to have a value")
 	}
 }
-
 func TestSessionMiddleware_UsesExistingSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -94,9 +94,9 @@ func TestSessionMiddleware_UsesExistingSession(t *testing.T) {
 		t.Fatal("expected no new session cookie")
 	}
 }
-
 func TestSessionMiddleware_RecreatesMissingSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -153,7 +153,8 @@ func TestSessionMiddleware_RecreatesMissingSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_UpdatesSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -202,7 +203,8 @@ func TestSessionMiddleware_UpdatesSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_ExpiredSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -266,7 +268,8 @@ func TestSessionMiddleware_ExpiredSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_RefreshesSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -319,7 +322,8 @@ func TestSessionMiddleware_RefreshesSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_RegeneratesSessionID(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -364,7 +368,8 @@ func TestSessionMiddleware_RegeneratesSessionID(t *testing.T) {
 }
 
 func TestSessionMiddleware_RegeneratesSessionID_PreservesSession(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -414,7 +419,8 @@ func TestSessionMiddleware_RegeneratesSessionID_PreservesSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_RegeneratedSessionIDIsValid(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -464,7 +470,8 @@ func TestSessionMiddleware_RegeneratedSessionIDIsValid(t *testing.T) {
 }
 
 func TestSessionMiddleware_RecreatesSessionOnIPMismatch(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -540,7 +547,8 @@ func TestSessionMiddleware_RecreatesSessionOnIPMismatch(t *testing.T) {
 }
 
 func TestSessionMiddleware_RecreatesSessionOnUserAgentMismatch(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 	config := testCookieConfig()
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -615,10 +623,9 @@ func TestSessionMiddleware_RecreatesSessionOnUserAgentMismatch(t *testing.T) {
 	}
 }
 
-// endregion Middleware
-// region csrf
 func TestCSRFMiddleware_GET(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -637,7 +644,8 @@ func TestCSRFMiddleware_GET(t *testing.T) {
 }
 
 func TestCSRFMiddleware_POSTWithoutToken(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("expected handler not to be called")
@@ -660,7 +668,8 @@ func TestCSRFMiddleware_POSTWithoutToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_POSTWithInvalidToken(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("expected handler not to be called")
@@ -700,7 +709,8 @@ func TestCSRFMiddleware_POSTWithInvalidToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_POSTWithValidToken(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -754,7 +764,8 @@ func TestCSRFMiddleware_POSTWithValidToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_GETCreatesCSRFToken(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -791,7 +802,8 @@ func TestCSRFMiddleware_GETCreatesCSRFToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_GETPreservesExistingCSRFToken(t *testing.T) {
-	store := newTestStore(t)
+	repository := &mockSessionRepository{}
+	store := NewStore(repository)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -846,5 +858,3 @@ func TestCSRFMiddleware_GETPreservesExistingCSRFToken(t *testing.T) {
 		)
 	}
 }
-
-// endregion csrf

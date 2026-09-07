@@ -1,4 +1,4 @@
-package session
+package sqlite
 
 import "testing"
 
