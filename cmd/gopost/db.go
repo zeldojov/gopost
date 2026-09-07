@@ -3,16 +3,16 @@ package main
 import (
 	"database/sql"
 
-	"github.com/zeldojov/gopost/internal/storage/sqlite"
+	"github.com/zeldojov/gopost/internal/database"
 )
 
 func initDB(path string) (*sql.DB, error) {
-	db, err := sqlite.OpenDB(path)
+	db, err := database.OpenDB(path)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := sqlite.CreateSessionsTable(db); err != nil {
+	if err := database.CreateSessionsTable(db); err != nil {
 		db.Close()
 		return nil, err
 	}

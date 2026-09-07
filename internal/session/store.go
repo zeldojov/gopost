@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/zeldojov/gopost/internal/storage"
+	database "github.com/zeldojov/gopost/internal/database"
 )
 
 type Store struct {
-	repository storage.SessionRepository
+	repository database.SessionRepositoryInterface
 }
 
-func NewStore(repository storage.SessionRepository) *Store {
+func NewStore(repository database.SessionRepositoryInterface) *Store {
 	return &Store{
 		repository: repository,
 	}
@@ -21,7 +21,7 @@ func NewStore(repository storage.SessionRepository) *Store {
 func (s *Store) GetSession(sessionID string) (Session, error) {
 	record, err := s.repository.GetSession(sessionID)
 
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, database.ErrNotFound) {
 		return Session{}, ErrSessionNotFound
 	}
 
@@ -46,7 +46,7 @@ func (s *Store) AddSession(r *http.Request) (string, error) {
 	sessionID := newSessionID()
 	sess := newSession(r)
 
-	err := s.repository.CreateSession(storage.Session{
+	err := s.repository.CreateSession(database.Session{
 		ID:        sessionID,
 		Data:      sess.Data,
 		IP:        sess.IP,
@@ -64,7 +64,7 @@ func (s *Store) AddSession(r *http.Request) (string, error) {
 func (s *Store) RemoveSession(sessionID string) error {
 	err := s.repository.DeleteSession(sessionID)
 
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, database.ErrNotFound) {
 		return ErrSessionNotFound
 	}
 
@@ -72,7 +72,7 @@ func (s *Store) RemoveSession(sessionID string) error {
 }
 
 func (s *Store) UpdateSession(sessionID string, sess Session) error {
-	err := s.repository.UpdateSession(storage.Session{
+	err := s.repository.UpdateSession(database.Session{
 		ID:        sessionID,
 		Data:      sess.Data,
 		IP:        sess.IP,
@@ -81,7 +81,7 @@ func (s *Store) UpdateSession(sessionID string, sess Session) error {
 		ExpiresAt: sess.ExpiresAt,
 	})
 
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, database.ErrNotFound) {
 		return ErrSessionNotFound
 	}
 
@@ -114,7 +114,7 @@ func (s *Store) RegenerateSessionID(sessionID string) (string, error) {
 
 	err = s.repository.RegenerateSession(
 		sessionID,
-		storage.Session{
+		database.Session{
 			ID:        newID,
 			Data:      sess.Data,
 			IP:        sess.IP,
@@ -124,7 +124,7 @@ func (s *Store) RegenerateSessionID(sessionID string) (string, error) {
 		},
 	)
 
-	if errors.Is(err, storage.ErrNotFound) {
+	if errors.Is(err, database.ErrNotFound) {
 		return "", ErrSessionNotFound
 	}
 

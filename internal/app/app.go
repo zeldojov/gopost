@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/zeldojov/gopost/internal/database"
 	"github.com/zeldojov/gopost/internal/session"
-	"github.com/zeldojov/gopost/internal/storage/sqlite"
 )
 
 type Config struct {
@@ -38,19 +38,19 @@ func New(config Config) (*App, error) {
 		return nil, err
 	}
 
-	sessionRepository := sqlite.NewSessionRepository(a.db)
+	sessionRepository := database.NewSessionRepository(a.db)
 	a.sessionStore = session.NewStore(sessionRepository)
 
 	return a, nil
 }
 
 func (a *App) openDB() error {
-	db, err := sqlite.OpenDB(a.config.DBPath)
+	db, err := database.OpenDB(a.config.DBPath)
 	if err != nil {
 		return err
 	}
 
-	if err := sqlite.CreateSessionsTable(db); err != nil {
+	if err := database.CreateSessionsTable(db); err != nil {
 		db.Close()
 		return err
 	}

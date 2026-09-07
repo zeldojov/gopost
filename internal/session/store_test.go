@@ -7,29 +7,29 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeldojov/gopost/internal/storage"
+	database "github.com/zeldojov/gopost/internal/database"
 )
 
 type mockSessionRepository struct {
-	createdSession storage.Session
+	createdSession database.Session
 }
 
-func (m *mockSessionRepository) CreateSession(session storage.Session) error {
+func (m *mockSessionRepository) CreateSession(session database.Session) error {
 	m.createdSession = session
 	return nil
 }
 
-func (m *mockSessionRepository) GetSession(id string) (storage.Session, error) {
+func (m *mockSessionRepository) GetSession(id string) (database.Session, error) {
 	if m.createdSession.ID != id {
-		return storage.Session{}, storage.ErrNotFound
+		return database.Session{}, database.ErrNotFound
 	}
 
 	return m.createdSession, nil
 }
 
-func (m *mockSessionRepository) UpdateSession(sess storage.Session) error {
+func (m *mockSessionRepository) UpdateSession(sess database.Session) error {
 	if m.createdSession.ID != sess.ID {
-		return storage.ErrNotFound
+		return database.ErrNotFound
 	}
 
 	m.createdSession = sess
@@ -38,16 +38,16 @@ func (m *mockSessionRepository) UpdateSession(sess storage.Session) error {
 
 func (m *mockSessionRepository) DeleteSession(id string) error {
 	if m.createdSession.ID != id {
-		return storage.ErrNotFound
+		return database.ErrNotFound
 	}
 
-	m.createdSession = storage.Session{}
+	m.createdSession = database.Session{}
 	return nil
 }
 
-func (m *mockSessionRepository) RegenerateSession(oldID string, sess storage.Session) error {
+func (m *mockSessionRepository) RegenerateSession(oldID string, sess database.Session) error {
 	if m.createdSession.ID != oldID {
-		return storage.ErrNotFound
+		return database.ErrNotFound
 	}
 
 	m.createdSession = sess

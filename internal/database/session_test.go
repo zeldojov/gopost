@@ -1,12 +1,10 @@
-package sqlite
+package database
 
 import (
 	"errors"
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/zeldojov/gopost/internal/storage"
 )
 
 func TestSessionRepository_CreateAndGetSession(t *testing.T) {
@@ -25,7 +23,7 @@ func TestSessionRepository_CreateAndGetSession(t *testing.T) {
 	createdAt := time.Now().Truncate(time.Microsecond)
 	expiresAt := createdAt.Add(30 * time.Minute)
 
-	expected := storage.Session{
+	expected := Session{
 		ID: "session-123",
 		Data: map[string]string{
 			"user_id": "42",
@@ -97,8 +95,8 @@ func TestSessionRepository_GetSession_NotFound(t *testing.T) {
 
 	_, err = repository.GetSession("missing-session")
 
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("expected storage.ErrNotFound, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 func TestSessionRepository_UpdateSession(t *testing.T) {
@@ -117,7 +115,7 @@ func TestSessionRepository_UpdateSession(t *testing.T) {
 	createdAt := time.Now().Truncate(time.Microsecond)
 	expiresAt := createdAt.Add(30 * time.Minute)
 
-	session := storage.Session{
+	session := Session{
 		ID: "session-123",
 		Data: map[string]string{
 			"user_id": "42",
@@ -174,7 +172,7 @@ func TestSessionRepository_UpdateSession_NotFound(t *testing.T) {
 
 	repository := NewSessionRepository(db)
 
-	session := storage.Session{
+	session := Session{
 		ID: "missing-session",
 		Data: map[string]string{
 			"user_id": "42",
@@ -187,8 +185,8 @@ func TestSessionRepository_UpdateSession_NotFound(t *testing.T) {
 
 	err = repository.UpdateSession(session)
 
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("expected storage.ErrNotFound, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 func TestSessionRepository_DeleteSession(t *testing.T) {
@@ -204,7 +202,7 @@ func TestSessionRepository_DeleteSession(t *testing.T) {
 
 	repository := NewSessionRepository(db)
 
-	session := storage.Session{
+	session := Session{
 		ID: "session-123",
 		Data: map[string]string{
 			"user_id": "42",
@@ -225,8 +223,8 @@ func TestSessionRepository_DeleteSession(t *testing.T) {
 
 	_, err = repository.GetSession(session.ID)
 
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("expected storage.ErrNotFound, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 func TestSessionRepository_DeleteSession_NotFound(t *testing.T) {
@@ -244,8 +242,8 @@ func TestSessionRepository_DeleteSession_NotFound(t *testing.T) {
 
 	err = repository.DeleteSession("missing-session")
 
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("expected storage.ErrNotFound, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
 func TestSessionRepository_RegenerateSession(t *testing.T) {
@@ -261,7 +259,7 @@ func TestSessionRepository_RegenerateSession(t *testing.T) {
 
 	repository := NewSessionRepository(db)
 
-	oldSession := storage.Session{
+	oldSession := Session{
 		ID: "old-session",
 		Data: map[string]string{
 			"user_id": "42",
@@ -276,7 +274,7 @@ func TestSessionRepository_RegenerateSession(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	newSession := storage.Session{
+	newSession := Session{
 		ID: "new-session",
 		Data: map[string]string{
 			"user_id": "42",
@@ -296,7 +294,7 @@ func TestSessionRepository_RegenerateSession(t *testing.T) {
 	}
 
 	_, err = repository.GetSession(oldSession.ID)
-	if !errors.Is(err, storage.ErrNotFound) {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("expected old session to be deleted, got %v", err)
 	}
 
@@ -338,7 +336,7 @@ func TestSessionRepository_RegenerateSession_NotFound(t *testing.T) {
 
 	repository := NewSessionRepository(db)
 
-	session := storage.Session{
+	session := Session{
 		ID: "new-session",
 		Data: map[string]string{
 			"user_id": "42",
@@ -354,13 +352,13 @@ func TestSessionRepository_RegenerateSession_NotFound(t *testing.T) {
 		session,
 	)
 
-	if !errors.Is(err, storage.ErrNotFound) {
-		t.Fatalf("expected storage.ErrNotFound, got %v", err)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 
 	_, err = repository.GetSession(session.ID)
 
-	if !errors.Is(err, storage.ErrNotFound) {
+	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf(
 			"expected new session not to exist after failed regeneration, got %v",
 			err,
