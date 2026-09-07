@@ -3,33 +3,98 @@ package session
 import (
 	"context"
 	"errors"
+	"log"
 	"net/http"
 )
 
-type contextKey struct{}
-
-func Middleware(store *Store) func(http.Handler) http.Handler {
+func (s *Store) Middleware(config CookieConfig, logger *log.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
 			sessionID, err := GetSessionID(r)
 
 			if errors.Is(err, ErrSessionCookieNotFound) {
-				sessionID = createSession(w, r, store)
+				sessionID, err = s.createSession(w, r, config)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
 			} else if err != nil {
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
 			}
 
-			sess, err := store.GetSession(sessionID)
+			sess, err := s.GetSession(sessionID)
 
-			if errors.Is(err, ErrSessionNotFound) {
-				DeleteSessionCookie(w)
+			if errors.Is(err, ErrSessionNotFound) ||
+				errors.Is(err, ErrSessionExpired) {
 
-				sessionID = createSession(w, r, store)
+				DeleteSessionCookie(w, config)
 
-				sess, err = store.GetSession(sessionID)
+				sessionID, err = s.createSession(w, r, config)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+
+				sess, err = s.GetSession(sessionID)
 			}
 
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			matches, err := s.MatchesRequest(sessionID, r)
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			if !matches {
+				if err := s.RemoveSession(sessionID); err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+
+				DeleteSessionCookie(w, config)
+
+				sessionID, err = s.createSession(w, r, config)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+
+				sess, err = s.GetSession(sessionID)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+			}
+
+			needsRegeneration, err := s.NeedsRegeneration(sessionID)
+			if err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+
+			if needsRegeneration {
+				sessionID, err = s.RegenerateSessionID(sessionID)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+
+				SetSessionCookie(w, config, sessionID)
+
+				sess, err = s.GetSession(sessionID)
+				if err != nil {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+			}
+
+			sess, err = s.RefreshSession(sessionID)
 			if err != nil {
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 				return
@@ -40,19 +105,51 @@ func Middleware(store *Store) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(w, r)
 
-			_ = store.UpdateSession(sessionID, sess)
+			if err := s.UpdateSession(sessionID, sess); err != nil {
+				logger.Printf(
+					"failed to update session %q: %v",
+					sessionID,
+					err,
+				)
+			}
 		})
 	}
 }
 
-func Get(r *http.Request) (*Session, bool) {
-	session, ok := r.Context().Value(contextKey{}).(*Session)
-	return session, ok
-}
+func (s *Store) CSRFMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sess, ok := GetSession(r)
+			if !ok {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
 
-func createSession(w http.ResponseWriter, r *http.Request, store *Store) string {
-	sessionID := store.AddSession(r)
-	SetSessionCookie(w, sessionID)
+			if r.Method == http.MethodGet {
+				sess.GetCSRFToken()
+				next.ServeHTTP(w, r)
+				return
+			}
 
-	return sessionID
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+
+			expectedToken, ok := sess.Get("csrf_token")
+			if !ok || expectedToken == "" {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+
+			requestToken := r.FormValue("csrf_token")
+
+			if requestToken == "" || requestToken != expectedToken {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }
