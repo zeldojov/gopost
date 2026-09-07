@@ -45,17 +45,7 @@ func (r *SessionRepository) GetSession(id string) (Session, error) {
 		expiresAt time.Time
 	)
 
-	err := r.db.QueryRow(`
-		SELECT data, ip, user_agent, created_at, expires_at
-		FROM sessions
-		WHERE id = ?
-	`, id).Scan(
-		&dataJSON,
-		&ip,
-		&userAgent,
-		&createdAt,
-		&expiresAt,
-	)
+	err := r.db.QueryRow(`SELECT data, ip, user_agent, created_at, expires_at FROM sessions WHERE id = ?`, id).Scan(&dataJSON, &ip, &userAgent, &createdAt, &expiresAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -88,23 +78,8 @@ func (r *SessionRepository) CreateSession(sess Session) error {
 	}
 
 	_, err = r.db.Exec(`
-		INSERT INTO sessions (
-			id,
-			data,
-			ip,
-			user_agent,
-			created_at,
-			expires_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`,
-		sess.ID,
-		data,
-		sess.IP,
-		sess.UserAgent,
-		sess.CreatedAt,
-		sess.ExpiresAt,
-	)
+		INSERT INTO sessions (id, data, ip, user_agent, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		sess.ID, data, sess.IP, sess.UserAgent, sess.CreatedAt, sess.ExpiresAt)
 
 	return err
 }
@@ -116,22 +91,8 @@ func (r *SessionRepository) UpdateSession(sess Session) error {
 	}
 
 	result, err := r.db.Exec(`
-		UPDATE sessions
-		SET
-			data = ?,
-			ip = ?,
-			user_agent = ?,
-			created_at = ?,
-			expires_at = ?
-		WHERE id = ?
-	`,
-		data,
-		sess.IP,
-		sess.UserAgent,
-		sess.CreatedAt,
-		sess.ExpiresAt,
-		sess.ID,
-	)
+		UPDATE sessions SET data = ?, ip = ?, user_agent = ?, created_at = ?, expires_at = ? WHERE id = ?`,
+		data, sess.IP, sess.UserAgent, sess.CreatedAt, sess.ExpiresAt, sess.ID)
 	if err != nil {
 		return err
 	}
@@ -149,10 +110,7 @@ func (r *SessionRepository) UpdateSession(sess Session) error {
 }
 
 func (r *SessionRepository) DeleteSession(id string) error {
-	result, err := r.db.Exec(`
-		DELETE FROM sessions
-		WHERE id = ?
-	`, id)
+	result, err := r.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -182,31 +140,13 @@ func (r *SessionRepository) RegenerateSession(oldID string, sess Session) error 
 	defer tx.Rollback()
 
 	_, err = tx.Exec(`
-		INSERT INTO sessions (
-			id,
-			data,
-			ip,
-			user_agent,
-			created_at,
-			expires_at
-		)
-		VALUES (?, ?, ?, ?, ?, ?)
-	`,
-		sess.ID,
-		data,
-		sess.IP,
-		sess.UserAgent,
-		sess.CreatedAt,
-		sess.ExpiresAt,
-	)
+		INSERT INTO sessions (id, data, ip, user_agent, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		sess.ID, data, sess.IP, sess.UserAgent, sess.CreatedAt, sess.ExpiresAt)
 	if err != nil {
 		return err
 	}
 
-	result, err := tx.Exec(`
-		DELETE FROM sessions
-		WHERE id = ?
-	`, oldID)
+	result, err := tx.Exec(`DELETE FROM sessions WHERE id = ?`, oldID)
 	if err != nil {
 		return err
 	}
