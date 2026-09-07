@@ -129,27 +129,34 @@ func (r *SessionRepository) UpdateSession(
 	}
 
 	if rows == 0 {
-		return sql.ErrNoRows
+		return storage.ErrNotFound
 	}
 
 	return nil
 }
 
-func (r *SessionRepository) DeleteSession(
-	id string,
-) error {
-	_, err := r.db.Exec(`
+func (r *SessionRepository) DeleteSession(id string) error {
+	result, err := r.db.Exec(`
 		DELETE FROM sessions
 		WHERE id = ?
 	`, id)
+	if err != nil {
+		return err
+	}
 
-	return err
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return storage.ErrNotFound
+	}
+
+	return nil
 }
 
-func (r *SessionRepository) RegenerateSession(
-	oldID string,
-	sess storage.Session,
-) error {
+func (r *SessionRepository) RegenerateSession(oldID string, sess storage.Session) error {
 	data, err := json.Marshal(sess.Data)
 	if err != nil {
 		return err
