@@ -1,15 +1,10 @@
 package session
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"net"
 	"net/http"
 	"time"
 )
-
-// region setup
 
 const sessionDuration = 30 * time.Minute
 const sessionAbsoluteDuration = 7 * 24 * time.Hour
@@ -40,14 +35,11 @@ func newSession(r *http.Request) Session {
 	return Session{
 		Data:      make(map[string]string),
 		IP:        getClientIP(r),
-		UserAgent: r.UserAgent(),
+		UserAgent: getUserAgent(r),
 		CreatedAt: now,
 		ExpiresAt: now.Add(sessionDuration),
 	}
 }
-
-// endregion setup
-// region session
 
 func (s *Session) Get(key string) (string, bool) {
 	value, ok := s.Data[key]
@@ -67,8 +59,6 @@ func (s *Session) Has(key string) bool {
 	return ok
 }
 
-// endregion session
-
 // region helpers
 
 func GetSession(r *http.Request) (*Session, bool) {
@@ -76,42 +66,8 @@ func GetSession(r *http.Request) (*Session, bool) {
 	return sess, ok
 }
 
-func newRandomToken() string {
-	b := make([]byte, 32)
-
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
-	}
-
-	return hex.EncodeToString(b)
-}
-
 func newSessionID() string {
 	return newRandomToken()
-}
-
-func newCSRFToken() string {
-	return newRandomToken()
-}
-
-func getClientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
-}
-
-func (s *Session) GetCSRFToken() string {
-	if token, ok := s.Get("csrf_token"); ok {
-		return token
-	}
-
-	token := newCSRFToken()
-	s.Set("csrf_token", token)
-
-	return token
 }
 
 // endregion helpers

@@ -463,7 +463,7 @@ func TestApp_CSRFMiddleware_CreatesToken(t *testing.T) {
 					t.Fatal("expected session")
 				}
 
-				if sess.GetCSRFToken() == "" {
+				if session.GetCSRFFromSession(sess) == "" {
 					t.Fatal("expected CSRF token")
 				}
 			}),
@@ -632,7 +632,7 @@ func TestApp_CSRFMiddleware_AllowsPOSTWithValidToken(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	csrfToken := sess.GetCSRFToken()
+	csrfToken := session.GetCSRFFromSession(&sess)
 
 	if csrfToken == "" {
 		t.Fatal("expected CSRF token")

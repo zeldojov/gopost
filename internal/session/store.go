@@ -151,7 +151,7 @@ func (s *Store) MatchesRequest(sessionID string, r *http.Request) (bool, error) 
 	}
 
 	return sess.IP == getClientIP(r) &&
-		sess.UserAgent == r.UserAgent(), nil
+		sess.UserAgent == getUserAgent(r), nil
 }
 
 func (s *Store) createSession(w http.ResponseWriter, r *http.Request, config CookieConfig) (string, error) {
