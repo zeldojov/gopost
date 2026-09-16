@@ -12,20 +12,17 @@ import (
 	"time"
 
 	"github.com/zeldojov/gopost/internal/database"
-	"github.com/zeldojov/gopost/internal/session"
 )
 
 type Config struct {
 	DBPath  string
 	Address string
-	Session session.CookieConfig
 }
 
 type App struct {
-	config       Config
-	db           *sql.DB
-	sessionStore *session.Store
-	logger       *log.Logger
+	config Config
+	db     *sql.DB
+	logger *log.Logger
 }
 
 func New(config Config) (*App, error) {
@@ -37,9 +34,6 @@ func New(config Config) (*App, error) {
 	if err := a.openDB(); err != nil {
 		return nil, err
 	}
-
-	sessionRepository := database.NewSessionRepository(a.db)
-	a.sessionStore = session.NewStore(sessionRepository)
 
 	return a, nil
 }
