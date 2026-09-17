@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -68,7 +67,7 @@ const (
 
 	sessionCookieName     = "session_id"
 	sessionCookiePath     = "/"
-	sessionCookieSecure   = true
+	sessionCookieSecure   = false
 	sessionCookieHTTPOnly = true
 	sessionCookieSameSite = http.SameSiteLaxMode
 )
@@ -147,7 +146,10 @@ func dbLoadSession(id string) (*Session, error) {
 		createdAt time.Time
 		expiresAt time.Time
 	)
-
+	LOG.Printf(
+		"DB LOAD 1: requested_id=%q",
+		id,
+	)
 	if err := DB.QueryRow(getSessionByIDQuery, id).Scan(
 		&csrfToken,
 		&userID,
@@ -195,7 +197,12 @@ func dbLoadSession(id string) (*Session, error) {
 		createdAt: createdAt,
 		expiresAt: expiresAt,
 	}
-
+	LOG.Printf(
+		"DB LOAD 2: requested_id=%q sess.id=%q sess=%p",
+		id,
+		sess.id,
+		sess,
+	)
 	return sess, nil
 }
 
@@ -229,17 +236,31 @@ func (sess *Session) Save() error {
 }
 
 func (sess *Session) Load(id string) error {
+	LOG.Printf(
+		"SESSION LOAD 1: receiver=%p requested_id=%q current_id=%q",
+		sess,
+		id,
+		sess.id,
+	)
 
 	newSess, err := dbLoadSession(id)
 	if err != nil {
-		if errors.Is(err, ErrSessionNotFound) {
-			return ErrSessionNotFound
-		}
-
 		return err
 	}
 
+	LOG.Printf(
+		"SESSION LOAD 2: newSess=%p newSess.id=%q",
+		newSess,
+		newSess.id,
+	)
+
 	*sess = *newSess
+
+	LOG.Printf(
+		"SESSION LOAD 3: receiver=%p sess.id=%q",
+		sess,
+		sess.id,
+	)
 
 	return nil
 }
@@ -249,6 +270,8 @@ func (sess *Session) Destroy() error {
 }
 
 func (sess *Session) Recreate(w http.ResponseWriter, r *http.Request) error {
+	userID := sess.userID
+
 	if err := sess.Destroy(); err != nil {
 		return err
 	}
@@ -256,6 +279,7 @@ func (sess *Session) Recreate(w http.ResponseWriter, r *http.Request) error {
 	unsetSessionCookie(w)
 
 	*sess = *NewAnonSession(r)
+	sess.userID = userID
 
 	if err := sess.Save(); err != nil {
 		return err
@@ -386,20 +410,30 @@ func (s *Session) IsAnonymous() bool {
 // region middleware
 
 func loadSession(r *http.Request) (*Session, error) {
+	LOG.Printf("========== loadSession NEW CODE ==========")
+
 	cookie, err := getSessionCookie(r)
 	if err != nil {
+		LOG.Printf("COOKIE READ ERROR: %v", err)
 		return nil, err
 	}
 
-	if _, err := uuid.Parse(cookie.Value); err != nil {
-		return nil, ErrSessionNotFound
-	}
+	LOG.Printf("LOAD 1: cookie=%q", cookie.Value)
 
 	var sess Session
+
+	LOG.Printf("LOAD 2: before Load sess.id=%q", sess.id)
 
 	if err := sess.Load(cookie.Value); err != nil {
 		return nil, err
 	}
+
+	LOG.Printf(
+		"LOAD 3: cookie=%q sess.id=%q sess=%p",
+		cookie.Value,
+		sess.id,
+		&sess,
+	)
 
 	return &sess, nil
 }
@@ -416,86 +450,24 @@ func createSession(w http.ResponseWriter, r *http.Request) (*Session, error) {
 	return sess, nil
 }
 
-func BaseMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var sess *Session
-		var err error
+// endregion middleware
+// region auth
+func (sess *Session) Authenticate(userID uuid.UUID, w http.ResponseWriter, r *http.Request) error {
+	if err := sess.Destroy(); err != nil {
+		return err
+	}
 
-		// 1 Load session
-		switch r.Method {
-		case http.MethodGet:
-			sess, err = loadSession(r)
+	unsetSessionCookie(w)
 
-			if errors.Is(err, ErrSessionCookieNotFound) {
-				sess, err = createSession(w, r)
-			} else if errors.Is(err, ErrSessionNotFound) {
-				unsetSessionCookie(w)
-				sess, err = createSession(w, r)
-			}
+	*sess = *NewAuthSession(userID, r)
 
-		case http.MethodPost:
-			sess, err = loadSession(r)
+	if err := sess.Save(); err != nil {
+		return err
+	}
 
-			if errors.Is(err, ErrSessionCookieNotFound) || errors.Is(err, ErrSessionNotFound) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				return
-			}
+	setSessionCookie(w, sess.id)
 
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		if err != nil {
-
-			LOG.Printf("failed to load session: %v", err)
-
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		// 2 Validate session / Recover session
-		switch r.Method {
-		case http.MethodGet:
-			if sess.IsExpired() || !sess.MatchUserAgent(r) || !sess.MatchIP(r) {
-				if err = sess.Recreate(w, r); err != nil {
-
-					LOG.Printf("failed to recreate session: %v", err)
-					http.Error(w, "internal server error", http.StatusInternalServerError)
-					return
-				}
-			}
-
-		case http.MethodPost:
-			if sess.IsExpired() || !sess.MatchUserAgent(r) || !sess.MatchIP(r) {
-				http.Error(w, "forbidden", http.StatusForbidden)
-				return
-			}
-		}
-
-		// 3 CSRF
-		if r.Method == http.MethodPost && !sess.ValidateCSRFToken(r) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-
-		// 4 Refresh
-		if sess.ShouldRefresh() {
-			sess.Touch()
-		}
-
-		// 5 Context
-		ctx := context.WithValue(r.Context(), contextKey{}, sess)
-		r = r.WithContext(ctx)
-
-		// 6 Handler
-		next.ServeHTTP(w, r)
-
-		// 7 Save session
-		if err = sess.Save(); err != nil {
-			LOG.Printf("failed to save session %q: %v", sess.id, err)
-		}
-	})
+	return nil
 }
 
-// endregion middleware
+// endregion auth

@@ -26,6 +26,11 @@ func InitDB() error {
 		return err
 	}
 
+	if err := createUsersTable(sqlite); err != nil {
+		sqlite.Close()
+		return err
+	}
+
 	if _, err := sqlite.Exec(createSessionsTableQuery); err != nil {
 		sqlite.Close()
 		return err
