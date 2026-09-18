@@ -12,7 +12,8 @@ import (
 )
 
 func TestLogout_Success(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	userID := uuid.New()
 
@@ -24,14 +25,19 @@ func TestLogout_Success(t *testing.T) {
 
 	sess := session.NewAuthSession(userID, req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
 	sessionID := sess.ID()
 
 	// Handler očekuje session u contextu.
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	// Handler očekuje session cookie.
@@ -42,7 +48,7 @@ func TestLogout_Success(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	Logout(rec, req)
+	handler.Logout(rec, req)
 
 	// Logout mora da redirectuje na login.
 	if rec.Code != http.StatusSeeOther {
@@ -63,7 +69,7 @@ func TestLogout_Success(t *testing.T) {
 	// Session mora biti obrisana iz DB-a.
 	loadedSession := &session.Session{}
 
-	err := loadedSession.Load(sessionID)
+	err := st.LoadSession(loadedSession, sessionID)
 
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf(

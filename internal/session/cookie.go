@@ -17,7 +17,7 @@ func SessionCookieName() string {
 	return sessionCookieName
 }
 
-func getSessionCookie(r *http.Request) (*http.Cookie, error) {
+func GetSessionCookie(r *http.Request) (*http.Cookie, error) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if errors.Is(err, http.ErrNoCookie) {
 		return nil, ErrSessionCookieNotFound
@@ -29,7 +29,7 @@ func getSessionCookie(r *http.Request) (*http.Cookie, error) {
 	return cookie, nil
 }
 
-func setSessionCookie(w http.ResponseWriter, sessionID string) {
+func SetSessionCookie(w http.ResponseWriter, sessionID string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    sessionID,

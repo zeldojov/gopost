@@ -8,49 +8,49 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zeldojov/gopost/internal/middleware"
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
-func loadTestSession(t *testing.T, id string) *session.Session {
+func loadTestSession(t *testing.T, st *store.Store, id string) *session.Session {
 	t.Helper()
 
 	sess := &session.Session{}
 
-	if err := sess.Load(id); err != nil {
+	if err := st.LoadSession(sess, id); err != nil {
 		t.Fatal(err)
 	}
 
 	return sess
 }
 
-func publicChain(handler http.Handler) http.Handler {
-	return middleware.AllowedMethod(
-		middleware.Session(
-			middleware.ValidateSession(
-				middleware.CSRF(handler),
-			),
-		),
-	)
-}
-
 func TestLoginPage(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
-	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/login",
+		nil,
+	)
 
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	LoginPage(rec, req)
+	handler.LoginPage(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
@@ -78,14 +78,20 @@ func TestLoginPage(t *testing.T) {
 		t.Fatal("expected session CSRF token in form")
 	}
 }
-func TestLoginPage_MissingSession(t *testing.T) {
-	setupTestDB(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+func TestLoginPage_MissingSession(t *testing.T) {
+	st := setupTestStore(t)
+	handler := NewHandler(st)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/login",
+		nil,
+	)
 
 	rec := httptest.NewRecorder()
 
-	LoginPage(rec, req)
+	handler.LoginPage(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf(
@@ -97,7 +103,8 @@ func TestLoginPage_MissingSession(t *testing.T) {
 }
 
 func TestLoginPage_ShowsFlashError(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -108,12 +115,17 @@ func TestLoginPage_ShowsFlashError(t *testing.T) {
 	sess := session.NewAnonSession(req)
 	sess.SetFlash("error", "invalid credentials")
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	LoginPage(rec, req)
+	handler.LoginPage(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
@@ -135,14 +147,17 @@ func TestLoginPage_ShowsFlashError(t *testing.T) {
 }
 
 func TestLoginFlashFlow(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	loginHandler := publicChain(
-		http.HandlerFunc(Login),
+		st,
+		http.HandlerFunc(handler.Login),
 	)
 
 	loginPageHandler := publicChain(
-		http.HandlerFunc(LoginPage),
+		st,
+		http.HandlerFunc(handler.LoginPage),
 	)
 
 	// GET /login — kreira anonimnu sesiju.
@@ -166,7 +181,7 @@ func TestLoginFlashFlow(t *testing.T) {
 
 	cookie := parseSessionCookie(t, getRec)
 
-	sess := loadTestSession(t, cookie.Value)
+	sess := loadTestSession(t, st, cookie.Value)
 
 	// POST /login sa pogrešnim credentials.
 	form := url.Values{
@@ -208,7 +223,7 @@ func TestLoginFlashFlow(t *testing.T) {
 	}
 
 	// Flash mora biti sačuvan u DB.
-	savedSession := loadTestSession(t, cookie.Value)
+	savedSession := loadTestSession(t, st, cookie.Value)
 
 	if !savedSession.HasValue("flash:error") {
 		t.Fatal("expected flash error to be saved")
@@ -243,7 +258,7 @@ func TestLoginFlashFlow(t *testing.T) {
 	}
 
 	// Flash mora biti potrošen i sačuvan kao obrisan.
-	savedSession = loadTestSession(t, cookie.Value)
+	savedSession = loadTestSession(t, st, cookie.Value)
 
 	if savedSession.HasValue("flash:error") {
 		t.Fatal("expected flash error to be consumed")

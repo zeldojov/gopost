@@ -13,15 +13,12 @@ import (
 )
 
 func TestRegister_InvalidUsername(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodGet, "/register", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -39,7 +36,7 @@ func TestRegister_InvalidUsername(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	Register(rec, req)
+	handler.Register(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
@@ -68,15 +65,12 @@ func TestRegister_InvalidUsername(t *testing.T) {
 }
 
 func TestRegister_InvalidPassword(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodGet, "/register", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -94,7 +88,7 @@ func TestRegister_InvalidPassword(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	Register(rec, req)
+	handler.Register(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
@@ -123,21 +117,18 @@ func TestRegister_InvalidPassword(t *testing.T) {
 }
 
 func TestRegister_UsernameTaken(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	existingUser := user.CreateUser("testuser", "existing-hash")
 
-	if err := existingUser.Save(); err != nil {
+	if err := st.SaveUser(existingUser); err != nil {
 		t.Fatal(err)
 	}
 
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodGet, "/register", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -155,7 +146,7 @@ func TestRegister_UsernameTaken(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	Register(rec, req)
+	handler.Register(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
@@ -184,20 +175,19 @@ func TestRegister_UsernameTaken(t *testing.T) {
 }
 
 func TestRegister_Success(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
-	// Kreiraj početnu anonimnu sesiju.
 	initialReq := httptest.NewRequest(http.MethodGet, "/register", nil)
 
 	sess := session.NewAnonSession(initialReq)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
 	oldSessionID := sess.ID()
 
-	// Napravi POST request.
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
@@ -214,15 +204,13 @@ func TestRegister_Success(t *testing.T) {
 		Value: oldSessionID,
 	})
 
-	// Register očekuje session u contextu.
 	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	Register(rec, req)
+	handler.Register(rec, req)
 
-	// Uspešna registracija.
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
 			"expected status %d, got %d",
@@ -238,8 +226,7 @@ func TestRegister_Success(t *testing.T) {
 		)
 	}
 
-	// User mora biti kreiran.
-	foundUser, err := user.GetUserByUsername("testuser")
+	foundUser, err := st.GetUserByUsername("testuser")
 	if err != nil {
 		t.Fatalf("failed to get registered user: %v", err)
 	}
@@ -252,17 +239,14 @@ func TestRegister_Success(t *testing.T) {
 		)
 	}
 
-	// Password ne sme biti plaintext.
 	if foundUser.PasswordHash == "ValidPassword123!" {
 		t.Fatal("password was stored in plaintext")
 	}
 
-	// Authenticate() mora da regeneriše session ID.
 	if sess.ID() == oldSessionID {
 		t.Fatal("expected session ID to change")
 	}
 
-	// Session mora biti autentifikovana.
 	if !sess.IsAuthenticated() {
 		t.Fatal("expected session to be authenticated")
 	}
@@ -279,10 +263,9 @@ func TestRegister_Success(t *testing.T) {
 		)
 	}
 
-	// Nova sesija mora postojati u DB-u.
 	savedSession := &session.Session{}
 
-	if err := savedSession.Load(sess.ID()); err != nil {
+	if err := st.LoadSession(savedSession, sess.ID()); err != nil {
 		t.Fatalf(
 			"failed to load authenticated session: %v",
 			err,
@@ -305,7 +288,6 @@ func TestRegister_Success(t *testing.T) {
 		)
 	}
 
-	// Authenticate() mora da postavi novi session cookie.
 	setCookieHeaders := rec.Header().Values("Set-Cookie")
 
 	if len(setCookieHeaders) == 0 {
@@ -315,7 +297,10 @@ func TestRegister_Success(t *testing.T) {
 	var foundNewSessionCookie bool
 
 	for _, header := range setCookieHeaders {
-		if strings.HasPrefix(header, session.SessionCookieName()+"="+sess.ID()) {
+		if strings.HasPrefix(
+			header,
+			session.SessionCookieName()+"="+sess.ID(),
+		) {
 			foundNewSessionCookie = true
 			break
 		}

@@ -10,12 +10,15 @@ import (
 	"uuid"
 
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
-func authChain(handler http.Handler) http.Handler {
+func authChain(st *store.Store, handler http.Handler) http.Handler {
 	return AllowedMethod(
 		Session(
+			st,
 			ValidateSession(
+				st,
 				CSRF(
 					Auth(handler),
 				),
@@ -52,8 +55,9 @@ func TestAuth_AnonymousSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -88,8 +92,9 @@ func TestAuth_AuthenticatedSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -112,7 +117,7 @@ func TestAuth_AuthenticatedSession(t *testing.T) {
 }
 
 func TestAuthChain_GETAnonymous(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
@@ -124,7 +129,7 @@ func TestAuthChain_GETAnonymous(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/user/home", nil)
 	rec := httptest.NewRecorder()
 
-	authChain(handler).ServeHTTP(rec, req)
+	authChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected status 303, got %d", rec.Code)
@@ -140,7 +145,7 @@ func TestAuthChain_GETAnonymous(t *testing.T) {
 }
 
 func TestAuthChain_POSTWithoutSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
@@ -151,7 +156,7 @@ func TestAuthChain_POSTWithoutSession(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/user/home", nil)
 	rec := httptest.NewRecorder()
 
-	authChain(handler).ServeHTTP(rec, req)
+	authChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rec.Code)
@@ -163,20 +168,20 @@ func TestAuthChain_POSTWithoutSession(t *testing.T) {
 }
 
 func TestAuthChain_AuthenticatedGET(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	userID := uuid.New()
 
-	sess := session.NewAuthSession(
-		userID,
-		httptest.NewRequest(http.MethodGet, "/", nil),
-	)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
+	sess := session.NewAuthSession(userID, req)
+
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/user/home", nil)
+	req = httptest.NewRequest(http.MethodGet, "/user/home", nil)
+
 	req.AddCookie(&http.Cookie{
 		Name:  session.SessionCookieName(),
 		Value: sess.ID(),
@@ -191,7 +196,7 @@ func TestAuthChain_AuthenticatedGET(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	authChain(handler).ServeHTTP(rec, req)
+	authChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -203,23 +208,22 @@ func TestAuthChain_AuthenticatedGET(t *testing.T) {
 }
 
 func TestAuthChain_AuthenticatedPOST(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	userID := uuid.New()
 
-	sess := session.NewAuthSession(
-		userID,
-		httptest.NewRequest(http.MethodPost, "/", nil),
-	)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
+	sess := session.NewAuthSession(userID, req)
+
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), sess.CSRFToken())
 
-	req := httptest.NewRequest(
+	req = httptest.NewRequest(
 		http.MethodPost,
 		"/user/home",
 		strings.NewReader(form.Encode()),
@@ -241,7 +245,7 @@ func TestAuthChain_AuthenticatedPOST(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	authChain(handler).ServeHTTP(rec, req)
+	authChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -253,23 +257,22 @@ func TestAuthChain_AuthenticatedPOST(t *testing.T) {
 }
 
 func TestAuthChain_InvalidCSRF(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	userID := uuid.New()
 
-	sess := session.NewAuthSession(
-		userID,
-		httptest.NewRequest(http.MethodPost, "/", nil),
-	)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
+	sess := session.NewAuthSession(userID, req)
+
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), "invalid-token")
 
-	req := httptest.NewRequest(
+	req = httptest.NewRequest(
 		http.MethodPost,
 		"/user/home",
 		strings.NewReader(form.Encode()),
@@ -290,7 +293,7 @@ func TestAuthChain_InvalidCSRF(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	authChain(handler).ServeHTTP(rec, req)
+	authChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rec.Code)

@@ -8,7 +8,7 @@ import (
 	"github.com/zeldojov/gopost/internal/session"
 )
 
-func LoginPage(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.New("login").Parse(`
 <!DOCTYPE html>
 <html lang="en">

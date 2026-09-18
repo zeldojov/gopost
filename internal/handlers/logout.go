@@ -7,7 +7,7 @@ import (
 	"github.com/zeldojov/gopost/internal/session"
 )
 
-func Logout(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	sess, ok := session.GetSession(r)
 	if !ok {
 		log.Printf("session missing from request")
@@ -15,8 +15,8 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sess.Destroy(); err != nil {
-		log.Printf("failed to destroy session: %v", err)
+	if err := h.store.DeleteSession(sess); err != nil {
+		log.Printf("failed to delete session: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

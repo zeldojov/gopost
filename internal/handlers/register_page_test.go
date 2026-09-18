@@ -8,26 +8,61 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zeldojov/gopost/internal/middleware"
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
-func TestRegisterPage(t *testing.T) {
-	setupTestDB(t)
+func parseSessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, "/register", nil)
+	resp := rec.Result()
+
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == session.SessionCookieName() {
+			return cookie
+		}
+	}
+
+	t.Fatal("session cookie not found")
+	return nil
+}
+
+func publicChain(st *store.Store, handler http.Handler) http.Handler {
+	return middleware.AllowedMethod(
+		middleware.Session(
+			st,
+			middleware.ValidateSession(
+				st,
+				middleware.CSRF(handler),
+			),
+		),
+	)
+}
+
+func TestRegisterPage(t *testing.T) {
+	st := setupTestStore(t)
+	handler := NewHandler(st)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/register",
+		nil,
+	)
 
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	RegisterPage(rec, req)
+	handler.RegisterPage(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
@@ -55,14 +90,20 @@ func TestRegisterPage(t *testing.T) {
 		t.Fatal("expected session CSRF token in form")
 	}
 }
-func TestRegisterPage_MissingSession(t *testing.T) {
-	setupTestDB(t)
 
-	req := httptest.NewRequest(http.MethodGet, "/register", nil)
+func TestRegisterPage_MissingSession(t *testing.T) {
+	st := setupTestStore(t)
+	handler := NewHandler(st)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/register",
+		nil,
+	)
 
 	rec := httptest.NewRecorder()
 
-	RegisterPage(rec, req)
+	handler.RegisterPage(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf(
@@ -74,7 +115,8 @@ func TestRegisterPage_MissingSession(t *testing.T) {
 }
 
 func TestRegisterPage_ShowsFlashError(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -85,12 +127,17 @@ func TestRegisterPage_ShowsFlashError(t *testing.T) {
 	sess := session.NewAnonSession(req)
 	sess.SetFlash("error", "invalid username")
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	RegisterPage(rec, req)
+	handler.RegisterPage(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
@@ -112,14 +159,17 @@ func TestRegisterPage_ShowsFlashError(t *testing.T) {
 }
 
 func TestRegisterFlashFlow(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	registerHandler := publicChain(
-		http.HandlerFunc(Register),
+		st,
+		http.HandlerFunc(handler.Register),
 	)
 
 	registerPageHandler := publicChain(
-		http.HandlerFunc(RegisterPage),
+		st,
+		http.HandlerFunc(handler.RegisterPage),
 	)
 
 	// GET /register — kreira anonimnu sesiju.
@@ -143,7 +193,7 @@ func TestRegisterFlashFlow(t *testing.T) {
 
 	cookie := parseSessionCookie(t, getRec)
 
-	sess := loadTestSession(t, cookie.Value)
+	sess := loadTestSession(t, st, cookie.Value)
 
 	// POST /register sa nevalidnim username-om.
 	form := url.Values{
@@ -185,7 +235,7 @@ func TestRegisterFlashFlow(t *testing.T) {
 	}
 
 	// Flash mora biti sačuvan u DB.
-	savedSession := loadTestSession(t, cookie.Value)
+	savedSession := loadTestSession(t, st, cookie.Value)
 
 	if !savedSession.HasValue("flash:error") {
 		t.Fatal("expected flash error to be saved")
@@ -220,7 +270,7 @@ func TestRegisterFlashFlow(t *testing.T) {
 	}
 
 	// Flash mora biti potrošen.
-	savedSession = loadTestSession(t, cookie.Value)
+	savedSession = loadTestSession(t, st, cookie.Value)
 
 	if savedSession.HasValue("flash:error") {
 		t.Fatal("expected flash error to be consumed")

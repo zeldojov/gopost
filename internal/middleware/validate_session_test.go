@@ -11,7 +11,7 @@ import (
 )
 
 func TestValidateSessionMiddleware_NoSession(t *testing.T) {
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatal("handler must not be called")
 	}))
 
@@ -26,12 +26,12 @@ func TestValidateSessionMiddleware_NoSession(t *testing.T) {
 }
 
 func TestValidateSessionMiddleware_ValidGET(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -41,7 +41,7 @@ func TestValidateSessionMiddleware_ValidGET(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -60,12 +60,12 @@ func TestValidateSessionMiddleware_ValidGET(t *testing.T) {
 }
 
 func TestValidateSessionMiddleware_ValidPOST(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestValidateSessionMiddleware_ValidPOST(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -92,15 +92,16 @@ func TestValidateSessionMiddleware_ValidPOST(t *testing.T) {
 		t.Fatal("expected handler to be called")
 	}
 }
+
 func TestValidateSessionMiddleware_GETRecreatesExpiredSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	sess := session.NewAnonSession(req)
 
 	sess.SetExpiresAt(time.Now().Add(-time.Minute))
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -112,7 +113,7 @@ func TestValidateSessionMiddleware_GETRecreatesExpiredSession(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		loaded, ok := session.GetSession(r)
@@ -145,14 +146,14 @@ func TestValidateSessionMiddleware_GETRecreatesExpiredSession(t *testing.T) {
 }
 
 func TestValidateSessionMiddleware_POSTRejectsExpiredSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	sess := session.NewAnonSession(req)
 
 	sess.SetExpiresAt(time.Now().Add(-time.Minute))
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -162,7 +163,7 @@ func TestValidateSessionMiddleware_POSTRejectsExpiredSession(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -179,15 +180,16 @@ func TestValidateSessionMiddleware_POSTRejectsExpiredSession(t *testing.T) {
 		t.Fatal("expected handler not to be called")
 	}
 }
+
 func TestValidateSessionMiddleware_GETRecreatesOnIPMismatch(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	sess := session.NewAnonSession(req)
 
 	sess.SetUserIP("1.2.3.4")
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -199,7 +201,7 @@ func TestValidateSessionMiddleware_GETRecreatesOnIPMismatch(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		loaded, ok := session.GetSession(r)
@@ -228,14 +230,14 @@ func TestValidateSessionMiddleware_GETRecreatesOnIPMismatch(t *testing.T) {
 }
 
 func TestValidateSessionMiddleware_POSTRejectsIPMismatch(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	sess := session.NewAnonSession(req)
 
 	sess.SetUserIP("1.2.3.4")
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -245,7 +247,7 @@ func TestValidateSessionMiddleware_POSTRejectsIPMismatch(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -262,8 +264,9 @@ func TestValidateSessionMiddleware_POSTRejectsIPMismatch(t *testing.T) {
 		t.Fatal("expected handler not to be called")
 	}
 }
+
 func TestValidateSessionMiddleware_GETRecreatesOnUserAgentMismatch(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("User-Agent", "test-agent-1")
@@ -271,7 +274,7 @@ func TestValidateSessionMiddleware_GETRecreatesOnUserAgentMismatch(t *testing.T)
 	sess := session.NewAnonSession(req)
 	sess.SetUserAgent("test-agent-2")
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -283,7 +286,7 @@ func TestValidateSessionMiddleware_GETRecreatesOnUserAgentMismatch(t *testing.T)
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		loaded, ok := session.GetSession(r)
@@ -312,7 +315,7 @@ func TestValidateSessionMiddleware_GETRecreatesOnUserAgentMismatch(t *testing.T)
 }
 
 func TestValidateSessionMiddleware_POSTRejectsUserAgentMismatch(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set("User-Agent", "test-agent-1")
@@ -320,7 +323,7 @@ func TestValidateSessionMiddleware_POSTRejectsUserAgentMismatch(t *testing.T) {
 	sess := session.NewAnonSession(req)
 	sess.SetUserAgent("test-agent-2")
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -330,7 +333,7 @@ func TestValidateSessionMiddleware_POSTRejectsUserAgentMismatch(t *testing.T) {
 
 	called := false
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -347,8 +350,9 @@ func TestValidateSessionMiddleware_POSTRejectsUserAgentMismatch(t *testing.T) {
 		t.Fatal("expected handler not to be called")
 	}
 }
+
 func TestValidateSessionMiddleware_RefreshesSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	sess := session.NewAnonSession(req)
@@ -356,7 +360,7 @@ func TestValidateSessionMiddleware_RefreshesSession(t *testing.T) {
 	oldExpiration := time.Now().Add(session.SessionDuration() / 4)
 	sess.SetExpiresAt(oldExpiration)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -364,7 +368,7 @@ func TestValidateSessionMiddleware_RefreshesSession(t *testing.T) {
 		context.WithValue(req.Context(), session.ContextKey{}, sess),
 	)
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -384,15 +388,16 @@ func TestValidateSessionMiddleware_RefreshesSession(t *testing.T) {
 		)
 	}
 }
+
 func TestValidateSessionMiddleware_GETRecreatesSessionCookie(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	sess := session.NewAnonSession(req)
 
 	sess.SetExpiresAt(time.Now().Add(-time.Minute))
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatalf("save session: %v", err)
 	}
 
@@ -402,7 +407,7 @@ func TestValidateSessionMiddleware_GETRecreatesSessionCookie(t *testing.T) {
 		context.WithValue(req.Context(), session.ContextKey{}, sess),
 	)
 
-	handler := ValidateSession(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := ValidateSession(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

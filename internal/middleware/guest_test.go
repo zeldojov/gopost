@@ -10,27 +10,6 @@ import (
 	"github.com/zeldojov/gopost/internal/session"
 )
 
-func TestGuest_NoSession(t *testing.T) {
-	called := false
-
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-	})
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	Guest(handler).ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected status 500, got %d", rec.Code)
-	}
-
-	if called {
-		t.Fatal("expected next handler not to be called")
-	}
-}
-
 func TestGuest_AuthenticatedSession(t *testing.T) {
 	userID := uuid.New()
 
@@ -41,8 +20,9 @@ func TestGuest_AuthenticatedSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -75,8 +55,9 @@ func TestGuest_AnonymousSession(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 

@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 	"uuid"
@@ -36,7 +35,6 @@ var (
 )
 
 func NewAnonSession(r *http.Request) *Session {
-
 	s := Session{
 		id:        utils.NewRandomToken(),
 		csrfToken: utils.NewRandomToken(),
@@ -44,6 +42,7 @@ func NewAnonSession(r *http.Request) *Session {
 		userIP:    utils.GetClientIP(r),
 		userAgent: utils.GetUserAgent(r),
 	}
+
 	s.ClearValues()
 	s.Touch()
 
@@ -51,76 +50,31 @@ func NewAnonSession(r *http.Request) *Session {
 }
 
 func NewAuthSession(userID uuid.UUID, r *http.Request) *Session {
-
 	s := NewAnonSession(r)
 	s.userID = &userID
 
 	return s
 }
 
-func LoadSession(r *http.Request) (*Session, error) {
-
-	cookie, err := getSessionCookie(r)
-	if err != nil {
-		return nil, err
-	}
-
-	var sess Session
-
-	if err := sess.Load(cookie.Value); err != nil {
-		return nil, err
-	}
-
-	return &sess, nil
-}
-
-func CreateSession(w http.ResponseWriter, r *http.Request) (*Session, error) {
-	sess := NewAnonSession(r)
-
-	if err := sess.Save(); err != nil {
-		return nil, fmt.Errorf("save new session: %w", err)
-	}
-
-	setSessionCookie(w, sess.id)
-
-	return sess, nil
+func SessionDuration() time.Duration {
+	return sessionDuration
 }
 
 func (sess *Session) Recreate(w http.ResponseWriter, r *http.Request) error {
 	userID := sess.userID
 
-	if err := sess.Destroy(); err != nil {
-		return err
-	}
-
+	// DB deletion is now done by store.
+	// This method only changes the session state.
 	UnsetSessionCookie(w)
 
 	*sess = *NewAnonSession(r)
 	sess.userID = userID
 
-	if err := sess.Save(); err != nil {
-		return err
-	}
-
-	setSessionCookie(w, sess.id)
+	SetSessionCookie(w, sess.id)
 
 	return nil
 }
 
-func SessionDuration() time.Duration {
-	return sessionDuration
-}
-
-func (sess *Session) ID() string {
-	return sess.id
-}
-
-func (sess *Session) UserID() *uuid.UUID {
-	return sess.UserID()
-}
-func (sess *Session) ExpiresAt() time.Time {
-	return sess.expiresAt
-}
 func (sess *Session) SetExpiresAt(when time.Time) {
 	sess.expiresAt = when
 }
@@ -128,12 +82,9 @@ func (sess *Session) SetExpiresAt(when time.Time) {
 func (sess *Session) SetUserIP(ip string) {
 	sess.userIP = ip
 }
+
 func (sess *Session) SetUserAgent(agent string) {
 	sess.userAgent = agent
-}
-
-func (sess *Session) CSRFToken() string {
-	return sess.csrfToken
 }
 
 func (sess *Session) ClearValues() {
@@ -164,14 +115,66 @@ func (s *Session) MatchUserAgent(r *http.Request) bool {
 func (s *Session) MatchIP(r *http.Request) bool {
 	return s.userIP == utils.GetClientIP(r)
 }
+
 func (s *Session) IsExpired() bool {
 	return time.Now().After(s.expiresAt)
 }
 
 func (s *Session) ShouldRefresh() bool {
-
 	if s.IsExpired() {
 		return false
 	}
+
 	return time.Until(s.expiresAt) < sessionDuration/2
+}
+
+func (s *Session) ID() string {
+	return s.id
+}
+
+func (s *Session) CSRFToken() string {
+	return s.csrfToken
+}
+
+func (s *Session) UserID() *uuid.UUID {
+	return s.userID
+}
+
+func (s *Session) UserIP() string {
+	return s.userIP
+}
+
+func (s *Session) UserAgent() string {
+	return s.userAgent
+}
+
+func (s *Session) UserData() map[string]string {
+	return s.userData
+}
+
+func (s *Session) CreatedAt() time.Time {
+	return s.createdAt
+}
+
+func (s *Session) ExpiresAt() time.Time {
+	return s.expiresAt
+}
+func (sess *Session) LoadData(
+	id string,
+	csrfToken string,
+	userID *uuid.UUID,
+	userIP string,
+	userAgent string,
+	userData map[string]string,
+	createdAt time.Time,
+	expiresAt time.Time,
+) {
+	sess.id = id
+	sess.csrfToken = csrfToken
+	sess.userID = userID
+	sess.userIP = userIP
+	sess.userAgent = userAgent
+	sess.userData = userData
+	sess.createdAt = createdAt
+	sess.expiresAt = expiresAt
 }

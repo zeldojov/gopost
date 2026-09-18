@@ -7,12 +7,12 @@ import (
 	"testing"
 
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
+
 	_ "modernc.org/sqlite"
 )
 
-var DB *sql.DB
-
-func setupTestDB(t *testing.T) {
+func setupTestStore(t *testing.T) *store.Store {
 	t.Helper()
 
 	db, err := sql.Open("sqlite", ":memory:")
@@ -24,19 +24,21 @@ func setupTestDB(t *testing.T) {
 		db.Close()
 	})
 
-	DB = db
+	st := store.NewStore(db)
 
-	if err := session.CreateSessionsTable(DB); err != nil {
+	if err := st.CreateSessionsTable(); err != nil {
 		t.Fatal(err)
 	}
+
+	return st
 }
 
 func TestSessionMiddleware_GETCreatesSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		sess, ok := session.GetSession(r)
@@ -83,11 +85,11 @@ func TestSessionMiddleware_GETCreatesSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_POSTWithoutSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -107,32 +109,25 @@ func TestSessionMiddleware_POSTWithoutSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_GETLoadsExistingSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
+	// Kreiraj i sačuvaj postojeću sesiju.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
 
-	sess, err := session.CreateSession(rec, req)
-	if err != nil {
-		t.Fatalf("createSession: %v", err)
+	sess := session.NewAnonSession(req)
+
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
-	var cookie *http.Cookie
-
-	for _, c := range rec.Result().Cookies() {
-		if c.Name == session.SessionCookieName() {
-			cookie = c
-			break
-		}
-	}
-
-	if cookie == nil {
-		t.Fatal("expected session cookie")
+	cookie := &http.Cookie{
+		Name:  session.SessionCookieName(),
+		Value: sess.ID(),
 	}
 
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		loaded, ok := session.GetSession(r)
@@ -154,7 +149,7 @@ func TestSessionMiddleware_GETLoadsExistingSession(t *testing.T) {
 	req = httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(cookie)
 
-	rec = httptest.NewRecorder()
+	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
@@ -168,34 +163,26 @@ func TestSessionMiddleware_GETLoadsExistingSession(t *testing.T) {
 }
 
 func TestSessionMiddleware_POSTLoadsExistingSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
-	// Create existing session.
+	// Kreiraj postojeću sesiju.
 	getReq := httptest.NewRequest(http.MethodGet, "/", nil)
-	getRec := httptest.NewRecorder()
 
-	sess, err := session.CreateSession(getRec, getReq)
-	if err != nil {
-		t.Fatalf("createSession: %v", err)
+	sess := session.NewAnonSession(getReq)
+
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
-	var cookie *http.Cookie
-
-	for _, c := range getRec.Result().Cookies() {
-		if c.Name == session.SessionCookieName() {
-			cookie = c
-			break
-		}
+	cookie := &http.Cookie{
+		Name:  session.SessionCookieName(),
+		Value: sess.ID(),
 	}
 
-	if cookie == nil {
-		t.Fatal("expected session cookie")
-	}
-
-	// POST with existing session.
+	// POST sa postojećom sesijom.
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		loaded, ok := session.GetSession(r)
@@ -229,10 +216,10 @@ func TestSessionMiddleware_POSTLoadsExistingSession(t *testing.T) {
 		t.Fatal("expected handler to be called")
 	}
 }
-func TestSessionMiddleware_GETWithNonexistentSession(t *testing.T) {
-	setupTestDB(t)
 
-	// Cookie koji ne odgovara nijednoj sesiji u DB-u.
+func TestSessionMiddleware_GETWithNonexistentSession(t *testing.T) {
+	st := setupTestStore(t)
+
 	oldCookie := &http.Cookie{
 		Name:  session.SessionCookieName(),
 		Value: "nonexistent-session-id",
@@ -240,7 +227,7 @@ func TestSessionMiddleware_GETWithNonexistentSession(t *testing.T) {
 
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 
 		sess, ok := session.GetSession(r)
@@ -277,7 +264,9 @@ func TestSessionMiddleware_GETWithNonexistentSession(t *testing.T) {
 	var newCookie *http.Cookie
 
 	for _, cookie := range rec.Result().Cookies() {
-		if cookie.Name == session.SessionCookieName() && cookie.Value != oldCookie.Value {
+		if cookie.Name == session.SessionCookieName() &&
+			cookie.Value != oldCookie.Value &&
+			cookie.Value != "" {
 			newCookie = cookie
 			break
 		}
@@ -287,10 +276,10 @@ func TestSessionMiddleware_GETWithNonexistentSession(t *testing.T) {
 		t.Fatal("expected new session cookie")
 	}
 }
-func TestSessionMiddleware_POSTWithNonexistentSession(t *testing.T) {
-	setupTestDB(t)
 
-	// Cookie koji ne odgovara nijednoj sesiji u DB-u.
+func TestSessionMiddleware_POSTWithNonexistentSession(t *testing.T) {
+	st := setupTestStore(t)
+
 	cookie := &http.Cookie{
 		Name:  session.SessionCookieName(),
 		Value: "nonexistent-session-id",
@@ -298,7 +287,7 @@ func TestSessionMiddleware_POSTWithNonexistentSession(t *testing.T) {
 
 	called := false
 
-	handler := Session(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(st, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}))

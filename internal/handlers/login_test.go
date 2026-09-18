@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"context"
-	"database/sql"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,44 +13,9 @@ import (
 	"github.com/zeldojov/gopost/internal/user"
 )
 
-var DB *sql.DB
-
-func setupTestDB(t *testing.T) {
-	t.Helper()
-
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() {
-		db.Close()
-	})
-
-	DB = db
-
-	if err := session.CreateSessionsTable(DB); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func parseSessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
-	t.Helper()
-
-	resp := rec.Result()
-	cookies := resp.Cookies()
-
-	for _, cookie := range cookies {
-		if cookie.Name == session.SessionCookieName() {
-			return cookie
-		}
-	}
-
-	t.Fatal("session cookie not found")
-	return nil
-}
 func TestLogin_UserNotFound(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -61,11 +26,14 @@ func TestLogin_UserNotFound(t *testing.T) {
 		}.Encode()),
 	)
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
 
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,12 +42,17 @@ func TestLogin_UserNotFound(t *testing.T) {
 		Value: sess.ID(),
 	})
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	Login(rec, req)
+	handler.Login(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
@@ -108,7 +81,8 @@ func TestLogin_UserNotFound(t *testing.T) {
 }
 
 func TestLogin_InvalidPassword(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	password := "ValidPassword123!"
 
@@ -119,7 +93,7 @@ func TestLogin_InvalidPassword(t *testing.T) {
 
 	newUser := user.CreateUser("testuser", passwordHash)
 
-	if err := newUser.Save(); err != nil {
+	if err := st.SaveUser(newUser); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,11 +106,14 @@ func TestLogin_InvalidPassword(t *testing.T) {
 		}.Encode()),
 	)
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
 
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
@@ -145,12 +122,17 @@ func TestLogin_InvalidPassword(t *testing.T) {
 		Value: sess.ID(),
 	})
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	Login(rec, req)
+	handler.Login(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf(
@@ -179,7 +161,8 @@ func TestLogin_InvalidPassword(t *testing.T) {
 }
 
 func TestLogin_Success(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
+	handler := NewHandler(st)
 
 	password := "ValidPassword123!"
 
@@ -190,16 +173,20 @@ func TestLogin_Success(t *testing.T) {
 
 	newUser := user.CreateUser("testuser", passwordHash)
 
-	if err := newUser.Save(); err != nil {
+	if err := st.SaveUser(newUser); err != nil {
 		t.Fatal(err)
 	}
 
 	// Kreiraj početnu anonimnu sesiju.
-	initialReq := httptest.NewRequest(http.MethodGet, "/login", nil)
+	initialReq := httptest.NewRequest(
+		http.MethodGet,
+		"/login",
+		nil,
+	)
 
 	sess := session.NewAnonSession(initialReq)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
@@ -215,7 +202,10 @@ func TestLogin_Success(t *testing.T) {
 		}.Encode()),
 	)
 
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set(
+		"Content-Type",
+		"application/x-www-form-urlencoded",
+	)
 
 	req.AddCookie(&http.Cookie{
 		Name:  session.SessionCookieName(),
@@ -223,12 +213,17 @@ func TestLogin_Success(t *testing.T) {
 	})
 
 	// Handler očekuje session u contextu.
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
+	ctx := context.WithValue(
+		req.Context(),
+		session.ContextKey{},
+		sess,
+	)
+
 	req = req.WithContext(ctx)
 
 	rec := httptest.NewRecorder()
 
-	Login(rec, req)
+	handler.Login(rec, req)
 
 	// Uspešan login mora da redirectuje.
 	if rec.Code != http.StatusSeeOther {
@@ -246,7 +241,7 @@ func TestLogin_Success(t *testing.T) {
 		)
 	}
 
-	// Authenticate() mora da regeneriše session ID.
+	// Login mora da regeneriše session ID.
 	if sess.ID() == oldSessionID {
 		t.Fatal("expected session ID to change")
 	}
@@ -268,9 +263,26 @@ func TestLogin_Success(t *testing.T) {
 		)
 	}
 
+	// Stara sesija mora biti obrisana.
+	oldSession := &session.Session{}
+
+	err = st.LoadSession(oldSession, oldSessionID)
+
+	if err == nil {
+		t.Fatal("expected old session to be deleted")
+	}
+
+	if !errors.Is(err, session.ErrSessionNotFound) {
+		t.Fatalf(
+			"expected ErrSessionNotFound for old session, got %v",
+			err,
+		)
+	}
+
+	// Nova authenticated sesija mora biti sačuvana.
 	savedSession := &session.Session{}
 
-	if err := savedSession.Load(sess.ID()); err != nil {
+	if err := st.LoadSession(savedSession, sess.ID()); err != nil {
 		t.Fatalf(
 			"failed to load authenticated session: %v",
 			err,
@@ -303,7 +315,10 @@ func TestLogin_Success(t *testing.T) {
 	var foundNewSessionCookie bool
 
 	for _, header := range setCookieHeaders {
-		if strings.HasPrefix(header, session.SessionCookieName()+"="+sess.ID()) {
+		if strings.HasPrefix(
+			header,
+			session.SessionCookieName()+"="+sess.ID(),
+		) {
 			foundNewSessionCookie = true
 			break
 		}

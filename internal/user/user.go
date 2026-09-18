@@ -1,8 +1,14 @@
 package user
 
 import (
+	"errors"
 	"time"
 	"uuid"
+)
+
+var (
+	ErrUsernameTaken = errors.New("username already exists")
+	ErrUserNotFound  = errors.New("user not found")
 )
 
 type User struct {

@@ -10,8 +10,7 @@ import (
 	"github.com/zeldojov/gopost/internal/user"
 )
 
-func UserHome(w http.ResponseWriter, r *http.Request) {
-
+func (h *Handler) UserHome(w http.ResponseWriter, r *http.Request) {
 	sess, ok := session.GetSession(r)
 	if !ok {
 		log.Printf("session missing from request")
@@ -24,7 +23,7 @@ func UserHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	foundUser, err := user.GetUserByID(*sess.UserID())
+	foundUser, err := h.store.GetUserByID(*sess.UserID())
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)

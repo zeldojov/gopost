@@ -6,50 +6,70 @@ import (
 	"net/http"
 
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
-func Session(next http.Handler) http.Handler {
+func Session(st *store.Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var (
-			sess *session.Session
-			err  error
-		)
+		var sess *session.Session
+		newSession := false
 
-		switch r.Method {
-		case http.MethodGet:
-			sess, err = session.LoadSession(r)
+		cookie, err := session.GetSessionCookie(r)
 
-			switch {
-			case errors.Is(err, session.ErrSessionCookieNotFound):
-				sess, err = session.CreateSession(w, r)
-
-			case errors.Is(err, session.ErrSessionNotFound):
-				session.UnsetSessionCookie(w)
-				sess, err = session.CreateSession(w, r)
-			}
-
-		case http.MethodPost:
-			sess, err = session.LoadSession(r)
-
-			if errors.Is(err, session.ErrSessionCookieNotFound) || errors.Is(err, session.ErrSessionNotFound) {
+		switch {
+		case errors.Is(err, session.ErrSessionCookieNotFound):
+			if r.Method == http.MethodPost {
 				http.Error(w, "forbidden", http.StatusForbidden)
 				return
 			}
 
-		default:
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
+			sess = session.NewAnonSession(r)
+			newSession = true
 
-		if err != nil {
+		case err != nil:
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
+
+		default:
+			sess = &session.Session{}
+
+			if err := st.LoadSession(sess, cookie.Value); err != nil {
+				if errors.Is(err, session.ErrSessionNotFound) {
+					if r.Method == http.MethodPost {
+						http.Error(w, "forbidden", http.StatusForbidden)
+						return
+					}
+
+					session.UnsetSessionCookie(w)
+
+					sess = session.NewAnonSession(r)
+					newSession = true
+				} else {
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+					return
+				}
+			}
 		}
 
-		next.ServeHTTP(w, session.SetSession(sess, r))
+		if newSession {
+			if err := st.SaveSession(sess); err != nil {
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
 
-		if err := sess.Save(); err != nil {
-			log.Printf("failed to save session %q: %v", sess.ID(), err)
+			session.SetSessionCookie(w, sess.ID())
+		}
+
+		r = session.SetSession(sess, r)
+
+		next.ServeHTTP(w, r)
+
+		if err := st.SaveSession(sess); err != nil {
+			log.Printf(
+				"failed to save session %q: %v",
+				sess.ID(),
+				err,
+			)
 		}
 	})
 }

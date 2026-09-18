@@ -9,12 +9,15 @@ import (
 	"testing"
 
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
-func publicChain(handler http.Handler) http.Handler {
+func publicChain(st *store.Store, handler http.Handler) http.Handler {
 	return AllowedMethod(
 		Session(
+			st,
 			ValidateSession(
+				st,
 				CSRF(handler),
 			),
 		),
@@ -22,8 +25,6 @@ func publicChain(handler http.Handler) http.Handler {
 }
 
 func TestCSRF_GET(t *testing.T) {
-	setupTestDB(t)
-
 	called := false
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -46,8 +47,6 @@ func TestCSRF_GET(t *testing.T) {
 }
 
 func TestCSRF_POSTWithoutSession(t *testing.T) {
-	setupTestDB(t)
-
 	called := false
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,15 +68,9 @@ func TestCSRF_POSTWithoutSession(t *testing.T) {
 }
 
 func TestCSRF_POSTWithValidCSRFToken(t *testing.T) {
-	setupTestDB(t)
-
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodPost, "/", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), sess.CSRFToken())
@@ -89,8 +82,9 @@ func TestCSRF_POSTWithValidCSRFToken(t *testing.T) {
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -113,15 +107,9 @@ func TestCSRF_POSTWithValidCSRFToken(t *testing.T) {
 }
 
 func TestCSRF_POSTWithInvalidCSRFToken(t *testing.T) {
-	setupTestDB(t)
-
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodPost, "/", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), "invalid-token")
@@ -133,8 +121,9 @@ func TestCSRF_POSTWithInvalidCSRFToken(t *testing.T) {
 	)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -156,15 +145,9 @@ func TestCSRF_POSTWithInvalidCSRFToken(t *testing.T) {
 }
 
 func TestCSRF_POSTWithoutCSRFToken(t *testing.T) {
-	setupTestDB(t)
-
 	sess := session.NewAnonSession(
 		httptest.NewRequest(http.MethodPost, "/", nil),
 	)
-
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
-	}
 
 	req := httptest.NewRequest(
 		http.MethodPost,
@@ -172,8 +155,9 @@ func TestCSRF_POSTWithoutCSRFToken(t *testing.T) {
 		nil,
 	)
 
-	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
-	req = req.WithContext(ctx)
+	req = req.WithContext(
+		context.WithValue(req.Context(), session.ContextKey{}, sess),
+	)
 
 	called := false
 
@@ -195,7 +179,7 @@ func TestCSRF_POSTWithoutCSRFToken(t *testing.T) {
 }
 
 func TestPublicChain_GET(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
@@ -207,7 +191,7 @@ func TestPublicChain_GET(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
-	publicChain(handler).ServeHTTP(rec, req)
+	publicChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -219,7 +203,7 @@ func TestPublicChain_GET(t *testing.T) {
 }
 
 func TestPublicChain_POSTWithoutSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	called := false
 
@@ -230,7 +214,7 @@ func TestPublicChain_POSTWithoutSession(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	rec := httptest.NewRecorder()
 
-	publicChain(handler).ServeHTTP(rec, req)
+	publicChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rec.Code)
@@ -242,20 +226,19 @@ func TestPublicChain_POSTWithoutSession(t *testing.T) {
 }
 
 func TestPublicChain_POSTWithValidCSRF(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
-	sess := session.NewAnonSession(
-		httptest.NewRequest(http.MethodPost, "/", nil),
-	)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), sess.CSRFToken())
 
-	req := httptest.NewRequest(
+	req = httptest.NewRequest(
 		http.MethodPost,
 		"/",
 		strings.NewReader(form.Encode()),
@@ -277,7 +260,7 @@ func TestPublicChain_POSTWithValidCSRF(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	publicChain(handler).ServeHTTP(rec, req)
+	publicChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
@@ -289,20 +272,19 @@ func TestPublicChain_POSTWithValidCSRF(t *testing.T) {
 }
 
 func TestPublicChain_POSTWithInvalidCSRF(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
-	sess := session.NewAnonSession(
-		httptest.NewRequest(http.MethodPost, "/", nil),
-	)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
-		t.Fatal(err)
+	if err := st.SaveSession(sess); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
 
 	form := url.Values{}
 	form.Set(session.CSRFFieldName(), "invalid-token")
 
-	req := httptest.NewRequest(
+	req = httptest.NewRequest(
 		http.MethodPost,
 		"/",
 		strings.NewReader(form.Encode()),
@@ -323,7 +305,7 @@ func TestPublicChain_POSTWithInvalidCSRF(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 
-	publicChain(handler).ServeHTTP(rec, req)
+	publicChain(st, handler).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", rec.Code)

@@ -8,7 +8,7 @@ import (
 	"github.com/zeldojov/gopost/internal/session"
 )
 
-func RegisterPage(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.New("register").Parse(`
 <!DOCTYPE html>
 <html lang="en">

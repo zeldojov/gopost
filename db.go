@@ -4,8 +4,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/zeldojov/gopost/internal/session"
-	"github.com/zeldojov/gopost/internal/user"
+	"github.com/zeldojov/gopost/internal/store"
 	_ "modernc.org/sqlite"
 )
 
@@ -13,32 +12,32 @@ const (
 	dbPath = "app.db"
 )
 
-func InitDB() error {
+func InitDB() (*store.Store, error) {
 	if dbPath == "" {
-		return errors.New("dbPath is empty")
+		return nil, errors.New("dbPath is empty")
 	}
 
-	sqlite, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if err := sqlite.Ping(); err != nil {
-		sqlite.Close()
-		return err
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, err
 	}
 
-	if err := user.CreateUsersTable(sqlite); err != nil {
-		sqlite.Close()
-		return err
+	store := store.NewStore(db)
+
+	if err := store.CreateUsersTable(); err != nil {
+		db.Close()
+		return nil, err
 	}
 
-	if err := session.CreateSessionsTable(sqlite); err != nil {
-		sqlite.Close()
-		return err
+	if err := store.CreateSessionsTable(); err != nil {
+		db.Close()
+		return nil, err
 	}
 
-	DB = sqlite
-
-	return nil
+	return store, nil
 }

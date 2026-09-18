@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,15 +10,43 @@ import (
 	"uuid"
 
 	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 	"github.com/zeldojov/gopost/internal/user"
 )
 
+func setupTestStore(t *testing.T) *store.Store {
+	t.Helper()
+
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db.SetMaxOpenConns(1)
+
+	t.Cleanup(func() {
+		db.Close()
+	})
+
+	st := store.NewStore(db)
+
+	if err := st.CreateUsersTable(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.CreateSessionsTable(); err != nil {
+		t.Fatal(err)
+	}
+
+	return st
+}
+
 func TestUserHome_Success(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	newUser := user.CreateUser("testuser", "password-hash")
 
-	if err := newUser.Save(); err != nil {
+	if err := st.SaveUser(newUser); err != nil {
 		t.Fatal(err)
 	}
 
@@ -25,16 +54,18 @@ func TestUserHome_Success(t *testing.T) {
 
 	sess := session.NewAuthSession(newUser.ID, req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
 	req = req.WithContext(ctx)
 
+	handler := NewHandler(st)
+
 	rec := httptest.NewRecorder()
 
-	UserHome(rec, req)
+	handler.UserHome(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
@@ -66,8 +97,9 @@ func TestUserHome_Success(t *testing.T) {
 		t.Fatal("expected session CSRF token in logout form")
 	}
 }
+
 func TestUserHome_UserNotFound(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	userID := uuid.New()
 
@@ -75,16 +107,18 @@ func TestUserHome_UserNotFound(t *testing.T) {
 
 	sess := session.NewAuthSession(userID, req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
 	req = req.WithContext(ctx)
 
+	handler := NewHandler(st)
+
 	rec := httptest.NewRecorder()
 
-	UserHome(rec, req)
+	handler.UserHome(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf(
@@ -94,14 +128,17 @@ func TestUserHome_UserNotFound(t *testing.T) {
 		)
 	}
 }
+
 func TestUserHome_MissingSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/user/home", nil)
 
+	handler := NewHandler(st)
+
 	rec := httptest.NewRecorder()
 
-	UserHome(rec, req)
+	handler.UserHome(rec, req)
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf(
@@ -111,23 +148,26 @@ func TestUserHome_MissingSession(t *testing.T) {
 		)
 	}
 }
+
 func TestUserHome_AnonymousSession(t *testing.T) {
-	setupTestDB(t)
+	st := setupTestStore(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/user/home", nil)
 
 	sess := session.NewAnonSession(req)
 
-	if err := sess.Save(); err != nil {
+	if err := st.SaveSession(sess); err != nil {
 		t.Fatal(err)
 	}
 
 	ctx := context.WithValue(req.Context(), session.ContextKey{}, sess)
 	req = req.WithContext(ctx)
 
+	handler := NewHandler(st)
+
 	rec := httptest.NewRecorder()
 
-	UserHome(rec, req)
+	handler.UserHome(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf(

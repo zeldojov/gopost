@@ -9,7 +9,7 @@ import (
 	"github.com/zeldojov/gopost/internal/user"
 )
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	sess, ok := session.GetSession(r)
 	if !ok {
 		log.Printf("session missing from request")
@@ -20,7 +20,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	username := r.PostFormValue("username")
 	password := r.PostFormValue("password")
 
-	foundUser, err := user.GetUserByUsername(username)
+	foundUser, err := h.store.GetUserByUsername(username)
 	if err != nil {
 		if errors.Is(err, user.ErrUserNotFound) {
 			sess.SetFlash("error", "invalid credentials")
@@ -39,10 +39,24 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := sess.Authenticate(foundUser.ID, w, r); err != nil {
+	// Session fixation protection.
+	if err := h.store.DeleteSession(sess); err != nil {
+		log.Printf("failed to delete old session: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	session.UnsetSessionCookie(w)
+
+	sess.Authenticate(foundUser.ID, r)
+
+	if err := h.store.SaveSession(sess); err != nil {
+		log.Printf("failed to save authenticated session: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	session.SetSessionCookie(w, sess.ID())
 
 	http.Redirect(w, r, "/user/home", http.StatusSeeOther)
 }

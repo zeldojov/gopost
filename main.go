@@ -1,44 +1,43 @@
 package main
 
 import (
-	"database/sql"
 	"log"
 	"net/http"
 
 	"github.com/zeldojov/gopost/internal/handlers"
 	"github.com/zeldojov/gopost/internal/middleware"
-	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/store"
 )
 
 var LOG = log.Default()
-var DB *sql.DB
+
 var err error
 
-func init() {
-	if err = InitDB(); err != nil {
-		log.Fatalf("failed to initialize database: %v", err)
-	}
-
-	session.DB = DB
-}
-
 func main() {
-	defer DB.Close()
+	store, err := InitDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer store.Close()
 
 	mux := http.DefaultServeMux
 
-	mux.Handle("GET /login", middleware.Guest(http.HandlerFunc(handlers.LoginPage)))
-	mux.Handle("POST /login", middleware.Guest(http.HandlerFunc(handlers.Login)))
+	h := handlers.NewHandler(store)
 
-	mux.Handle("GET /register", middleware.Guest(http.HandlerFunc(handlers.RegisterPage)))
-	mux.Handle("POST /register", middleware.Guest(http.HandlerFunc(handlers.Register)))
+	http.Handle("/login", guestChain(store, http.HandlerFunc(h.Login)))
+	http.Handle("/login/", guestChain(store, http.HandlerFunc(h.LoginPage)))
 
-	mux.Handle("GET /user/home", middleware.Auth(http.HandlerFunc(handlers.UserHome)))
-	mux.Handle("POST /logout", middleware.Auth(http.HandlerFunc(handlers.Logout)))
+	http.Handle("/register", guestChain(store, http.HandlerFunc(h.Register)))
+	http.Handle("/register/", guestChain(store, http.HandlerFunc(h.RegisterPage)))
+
+	http.Handle("/user/home", authChain(store, http.HandlerFunc(h.UserHome)))
+	http.Handle("/logout", authChain(store, http.HandlerFunc(h.Logout)))
 
 	handler := middleware.AllowedMethod(
 		middleware.Session(
+			store,
 			middleware.ValidateSession(
+				store,
 				middleware.CSRF(mux),
 			),
 		),
@@ -48,4 +47,44 @@ func main() {
 		LOG.Fatal(err)
 	}
 
+}
+
+func publicChain(st *store.Store, handler http.Handler) http.Handler {
+	return middleware.AllowedMethod(
+		middleware.Session(
+			st,
+			middleware.ValidateSession(
+				st,
+				middleware.CSRF(handler),
+			),
+		),
+	)
+}
+
+func guestChain(st *store.Store, handler http.Handler) http.Handler {
+	return middleware.AllowedMethod(
+		middleware.Session(
+			st,
+			middleware.ValidateSession(
+				st,
+				middleware.CSRF(
+					middleware.Guest(handler),
+				),
+			),
+		),
+	)
+}
+
+func authChain(st *store.Store, handler http.Handler) http.Handler {
+	return middleware.AllowedMethod(
+		middleware.Session(
+			st,
+			middleware.ValidateSession(
+				st,
+				middleware.CSRF(
+					middleware.Auth(handler),
+				),
+			),
+		),
+	)
 }

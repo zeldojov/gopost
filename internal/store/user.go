@@ -1,4 +1,4 @@
-package user
+package store
 
 import (
 	"database/sql"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"uuid"
 
+	"github.com/zeldojov/gopost/internal/user"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -56,23 +57,13 @@ WHERE id = ?
 `
 )
 
-var (
-	ErrUsernameTaken = errors.New("username already exists")
-	ErrUserNotFound  = errors.New("user not found")
-)
-
-var DB *sql.DB
-
-func CreateUsersTable(sqlite *sql.DB) error {
-	if _, err := sqlite.Exec(createUsersTableQuery); err != nil {
-		return err
-	}
-
-	return nil
+func (s *Store) CreateUsersTable() error {
+	_, err := s.db.Exec(createUsersTableQuery)
+	return err
 }
 
-func (u *User) Save() error {
-	_, err := DB.Exec(
+func (s *Store) SaveUser(u *user.User) error {
+	_, err := s.db.Exec(
 		saveUserQuery,
 		u.ID.String(),
 		u.Username,
@@ -91,58 +82,58 @@ func (u *User) Save() error {
 	}
 
 	if sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
-		return ErrUsernameTaken
+		return user.ErrUsernameTaken
 	}
 
 	return err
 }
 
-func GetUserByID(id uuid.UUID) (*User, error) {
-	var user User
+func (s *Store) GetUserByID(id uuid.UUID) (*user.User, error) {
+	var u user.User
 
-	err := DB.QueryRow(
+	err := s.db.QueryRow(
 		getUserByIDQuery,
 		id.String(),
 	).Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
+		&u.ID,
+		&u.Username,
+		&u.PasswordHash,
+		&u.CreatedAt,
+		&u.UpdatedAt,
 	)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
+			return nil, user.ErrUserNotFound
 		}
 
 		return nil, fmt.Errorf("get user by id %q: %w", id, err)
 	}
 
-	return &user, nil
+	return &u, nil
 }
 
-func GetUserByUsername(username string) (*User, error) {
-	var user User
+func (s *Store) GetUserByUsername(username string) (*user.User, error) {
+	var u user.User
 
-	err := DB.QueryRow(
+	err := s.db.QueryRow(
 		getUserByUsernameQuery,
 		username,
 	).Scan(
-		&user.ID,
-		&user.Username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
+		&u.ID,
+		&u.Username,
+		&u.PasswordHash,
+		&u.CreatedAt,
+		&u.UpdatedAt,
 	)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrUserNotFound
+			return nil, user.ErrUserNotFound
 		}
 
 		return nil, fmt.Errorf("get user by username %q: %w", username, err)
 	}
 
-	return &user, nil
+	return &u, nil
 }

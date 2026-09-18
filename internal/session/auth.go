@@ -13,20 +13,6 @@ func (s *Session) IsAnonymous() bool {
 	return s.userID == nil
 }
 
-func (sess *Session) Authenticate(userID uuid.UUID, w http.ResponseWriter, r *http.Request) error {
-	if err := sess.Destroy(); err != nil {
-		return err
-	}
-
-	UnsetSessionCookie(w)
-
-	*sess = *NewAuthSession(userID, r)
-
-	if err := sess.Save(); err != nil {
-		return err
-	}
-
-	setSessionCookie(w, sess.id)
-
-	return nil
+func (s *Session) Authenticate(userID uuid.UUID, r *http.Request) {
+	*s = *NewAuthSession(userID, r)
 }
