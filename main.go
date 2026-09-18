@@ -10,8 +10,6 @@ import (
 
 var LOG = log.Default()
 
-var err error
-
 func main() {
 	store, err := InitDB()
 	if err != nil {
