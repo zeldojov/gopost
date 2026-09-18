@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 
+	"github.com/zeldojov/gopost/internal/session"
+	"github.com/zeldojov/gopost/internal/user"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,12 +28,12 @@ func InitDB() error {
 		return err
 	}
 
-	if err := createUsersTable(sqlite); err != nil {
+	if err := user.CreateUsersTable(sqlite); err != nil {
 		sqlite.Close()
 		return err
 	}
 
-	if _, err := sqlite.Exec(createSessionsTableQuery); err != nil {
+	if err := session.CreateSessionsTable(sqlite); err != nil {
 		sqlite.Close()
 		return err
 	}
