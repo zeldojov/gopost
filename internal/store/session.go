@@ -64,11 +64,6 @@ WHERE id = ?
 `
 )
 
-func (s *Store) CreateSessionsTable() error {
-	_, err := s.db.Exec(createSessionsTableQuery)
-	return err
-}
-
 func (s *Store) SaveSession(sess *session.Session) error {
 	data, err := json.Marshal(sess.UserData())
 	if err != nil {
@@ -90,7 +85,7 @@ func (s *Store) SaveSession(sess *session.Session) error {
 	return err
 }
 
-func (s *Store) LoadSession(sess *session.Session, id string) error {
+func (s *Store) GetSessionById(sess *session.Session, id string) error {
 	var (
 		csrfToken string
 		userID    sql.NullString

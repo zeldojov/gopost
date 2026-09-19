@@ -57,11 +57,6 @@ WHERE id = ?
 `
 )
 
-func (s *Store) CreateUsersTable() error {
-	_, err := s.db.Exec(createUsersTableQuery)
-	return err
-}
-
 func (s *Store) SaveUser(u *user.User) error {
 	_, err := s.db.Exec(
 		saveUserQuery,

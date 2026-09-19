@@ -28,13 +28,8 @@ func setupTestStore(t *testing.T) *store.Store {
 		db.Close()
 	})
 
-	st := store.NewStore(db)
-
-	if err := st.CreateUsersTable(); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := st.CreateSessionsTable(); err != nil {
+	st, err := store.NewStore(db)
+	if err != nil {
 		t.Fatal(err)
 	}
 

@@ -6,12 +6,23 @@ import (
 
 	"github.com/zeldojov/gopost/internal/handlers"
 	"github.com/zeldojov/gopost/internal/middleware"
+	"github.com/zeldojov/gopost/internal/store"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
-var LOG = log.Default()
+const (
+	dbPath = "app.db"
+)
 
 func main() {
-	store, err := InitDB()
+
+	db, err := store.Connect("root", "root", "127.0.0.1", "3306", "gozex")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	store, err := store.NewStore(db)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -21,19 +32,19 @@ func main() {
 
 	h := handlers.NewHandler(store)
 
-	http.Handle("/login", middleware.GuestChain(store, http.HandlerFunc(h.Login)))
-	http.Handle("/login/", middleware.GuestChain(store, http.HandlerFunc(h.LoginPage)))
+	http.Handle("POST /login", middleware.GuestChain(store, http.HandlerFunc(h.Login)))
+	http.Handle("GET /login/", middleware.GuestChain(store, http.HandlerFunc(h.LoginPage)))
 
-	http.Handle("/register", middleware.GuestChain(store, http.HandlerFunc(h.Register)))
-	http.Handle("/register/", middleware.GuestChain(store, http.HandlerFunc(h.RegisterPage)))
+	http.Handle("POST /register", middleware.GuestChain(store, http.HandlerFunc(h.Register)))
+	http.Handle("GET /register/", middleware.GuestChain(store, http.HandlerFunc(h.RegisterPage)))
 
-	http.Handle("/user/home", middleware.AuthChain(store, http.HandlerFunc(h.UserHome)))
-	http.Handle("/logout", middleware.AuthChain(store, http.HandlerFunc(h.Logout)))
+	http.Handle("GET /user/home", middleware.AuthChain(store, http.HandlerFunc(h.UserHome)))
+	http.Handle("POST /logout", middleware.AuthChain(store, http.HandlerFunc(h.Logout)))
 
 	handler := middleware.PublicChain(store, mux)
 
 	if err := http.ListenAndServe("127.0.0.1:8000", handler); err != nil {
-		LOG.Fatal(err)
+		log.Fatal(err)
 	}
 
 }

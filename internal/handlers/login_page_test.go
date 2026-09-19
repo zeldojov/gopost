@@ -17,7 +17,7 @@ func loadTestSession(t *testing.T, st *store.Store, id string) *session.Session 
 
 	sess := &session.Session{}
 
-	if err := st.LoadSession(sess, id); err != nil {
+	if err := st.GetSessionById(sess, id); err != nil {
 		t.Fatal(err)
 	}
 

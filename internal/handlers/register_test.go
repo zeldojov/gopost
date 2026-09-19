@@ -265,7 +265,7 @@ func TestRegister_Success(t *testing.T) {
 
 	savedSession := &session.Session{}
 
-	if err := st.LoadSession(savedSession, sess.ID()); err != nil {
+	if err := st.GetSessionById(savedSession, sess.ID()); err != nil {
 		t.Fatalf(
 			"failed to load authenticated session: %v",
 			err,

@@ -69,7 +69,7 @@ func TestLogout_Success(t *testing.T) {
 	// Session mora biti obrisana iz DB-a.
 	loadedSession := &session.Session{}
 
-	err := st.LoadSession(loadedSession, sessionID)
+	err := st.GetSessionById(loadedSession, sessionID)
 
 	if !errors.Is(err, session.ErrSessionNotFound) {
 		t.Fatalf(

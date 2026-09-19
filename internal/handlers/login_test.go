@@ -266,7 +266,7 @@ func TestLogin_Success(t *testing.T) {
 	// Stara sesija mora biti obrisana.
 	oldSession := &session.Session{}
 
-	err = st.LoadSession(oldSession, oldSessionID)
+	err = st.GetSessionById(oldSession, oldSessionID)
 
 	if err == nil {
 		t.Fatal("expected old session to be deleted")
@@ -282,7 +282,7 @@ func TestLogin_Success(t *testing.T) {
 	// Nova authenticated sesija mora biti sačuvana.
 	savedSession := &session.Session{}
 
-	if err := st.LoadSession(savedSession, sess.ID()); err != nil {
+	if err := st.GetSessionById(savedSession, sess.ID()); err != nil {
 		t.Fatalf(
 			"failed to load authenticated session: %v",
 			err,

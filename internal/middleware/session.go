@@ -33,7 +33,7 @@ func Session(st *store.Store, next http.Handler) http.Handler {
 		default:
 			sess = &session.Session{}
 
-			if err := st.LoadSession(sess, cookie.Value); err != nil {
+			if err := st.GetSessionById(sess, cookie.Value); err != nil {
 				if errors.Is(err, session.ErrSessionNotFound) {
 					if r.Method == http.MethodPost {
 						http.Error(w, "forbidden", http.StatusForbidden)
