@@ -14,16 +14,23 @@ import (
 const (
 	createSessionsTableQuery = `
 CREATE TABLE IF NOT EXISTS sessions (
-	id TEXT PRIMARY KEY,
-	csrf_token TEXT NOT NULL,
-	user_id TEXT NULL,
-	user_ip TEXT NOT NULL,
+	id CHAR(64) NOT NULL PRIMARY KEY,
+	csrf_token CHAR(64) NOT NULL,
+	user_id CHAR(36) NULL,
+	user_ip VARCHAR(45) NOT NULL,
 	user_agent TEXT NOT NULL,
-	user_data TEXT NOT NULL,
+	user_data JSON NOT NULL,
 	created_at DATETIME NOT NULL,
-	expires_at DATETIME NOT NULL
+	expires_at DATETIME NOT NULL,
+
+	INDEX idx_sessions_user_id (user_id),
+
+	FOREIGN KEY (user_id)
+		REFERENCES users(id)
+		ON DELETE CASCADE
 );
 `
+
 	saveSessionQuery = `
 INSERT INTO sessions (
 	id,
@@ -36,13 +43,13 @@ INSERT INTO sessions (
 	expires_at
 )
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-	csrf_token = excluded.csrf_token,
-	user_id = excluded.user_id,
-	user_ip = excluded.user_ip,
-	user_agent = excluded.user_agent,
-	user_data = excluded.user_data,
-	expires_at = excluded.expires_at
+ON DUPLICATE KEY UPDATE
+	csrf_token = VALUES(csrf_token),
+	user_id = VALUES(user_id),
+	user_ip = VALUES(user_ip),
+	user_agent = VALUES(user_agent),
+	user_data = VALUES(user_data),
+	expires_at = VALUES(expires_at)
 `
 
 	getSessionByIDQuery = `

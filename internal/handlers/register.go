@@ -26,13 +26,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := user.ValidatePassword(password); err != nil {
+	if err := password.Validate(password); err != nil {
 		sess.SetFlash("error", "invalid password")
 		http.Redirect(w, r, "/register", http.StatusSeeOther)
 		return
 	}
 
-	passwordHash, err := user.HashPassword(password)
+	passwordHash, err := password.Hash(password)
 	if err != nil {
 		log.Printf("failed to hash password: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
